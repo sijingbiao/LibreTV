@@ -27,10 +27,11 @@ const API_SITES = {
     name: "空内容测试源",
     adult: true,
   },
-  ikun: {
-    api: "https://ikunzyapi.com/api.php/provide/vod",
-    name: "iKun资源",
+  huangcang: {
+    api: "https://hsckzy.vip",
+    name: "黄色仓库",
     adult: true,
+    detail: "https://hsckzy.vip",
   },
   //ARCHIVE https://telegra.ph/APIs-08-12
 };
