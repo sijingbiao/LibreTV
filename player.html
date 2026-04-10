@@ -216,6 +216,94 @@
         </div>
     </div>
 
+    <!-- 跳过片头片尾设置弹窗 -->
+    <div id="skipSettingsModal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-[10002]">
+        <div class="bg-[#111] p-6 rounded-lg w-11/12 max-w-md border border-[#333]">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold gradient-text">跳过片头片尾设置</h2>
+                <button onclick="toggleSkipSettings()" class="text-gray-400 hover:text-white text-2xl transition-colors">&times;</button>
+            </div>
+            
+            <div class="space-y-4">
+                <!-- 启用开关 -->
+                <div class="flex items-center justify-between p-3 bg-[#151515] rounded-lg">
+                    <div>
+                        <label class="text-sm font-medium text-gray-300">启用跳过功能</label>
+                        <p class="text-xs text-gray-500">自动跳过片头和片尾</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="skipEnabled" onchange="saveSkipSettingsFromModal()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                
+                <!-- 片头时间设置 -->
+                <div class="p-3 bg-[#151515] rounded-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-sm font-medium text-gray-300">跳过片头</label>
+                        <span class="text-xs text-gray-500">视频开始后跳过的时间</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="skipIntroTime" min="0" max="600" value="90" 
+                               class="w-20 bg-[#222] border border-[#333] text-white px-3 py-2 rounded text-center"
+                               onchange="saveSkipSettingsFromModal()">
+                        <span class="text-gray-400">秒</span>
+                        <span class="text-xs text-gray-500 ml-2">(约 <span id="introTimeDisplay">1分30秒</span>)</span>
+                    </div>
+                </div>
+                
+                <!-- 片尾时间设置 -->
+                <div class="p-3 bg-[#151515] rounded-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-sm font-medium text-gray-300">跳过片尾</label>
+                        <span class="text-xs text-gray-500">视频结束前跳过的时间</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="skipOutroTime" min="0" max="600" value="120" 
+                               class="w-20 bg-[#222] border border-[#333] text-white px-3 py-2 rounded text-center"
+                               onchange="saveSkipSettingsFromModal()">
+                        <span class="text-gray-400">秒</span>
+                        <span class="text-xs text-gray-500 ml-2">(约 <span id="outroTimeDisplay">2分00秒</span>)</span>
+                    </div>
+                </div>
+                
+                <!-- 应用范围 -->
+                <div class="p-3 bg-[#151515] rounded-lg">
+                    <label class="text-sm font-medium text-gray-300 block mb-2">应用范围</label>
+                    <div class="flex flex-col gap-2">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="skipScope" value="current" checked onchange="saveSkipSettingsFromModal()">
+                            <span class="text-sm text-gray-400">仅当前剧集</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="skipScope" value="all" onchange="saveSkipSettingsFromModal()">
+                            <span class="text-sm text-gray-400">所有剧集（全局默认）</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-6 flex gap-2">
+                <button onclick="resetSkipSettings()" class="flex-1 px-4 py-2 bg-[#333] hover:bg-[#444] text-white rounded-lg transition">
+                    重置默认
+                </button>
+                <button onclick="toggleSkipSettings()" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition">
+                    确定
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 跳过提示 -->
+    <div id="skipHint" class="skip-hint">
+        <div class="skip-hint-content">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
+            </svg>
+            <span id="skipHintText">跳过片头</span>
+        </div>
+    </div>
+
     <!-- 引入纯 JS sha256（HTTP 下依然可用） -->
     <script src="libs/sha256.min.js"></script>
     <script>

@@ -1,6 +1,17 @@
 const selectedAPIs = JSON.parse(localStorage.getItem('selectedAPIs') || '[]');
 const customAPIs = JSON.parse(localStorage.getItem('customAPIs') || '[]'); // 存储自定义API列表
 
+// 跳过片头片尾相关变量
+let skipSettings = {
+    enabled: false,
+    introTime: 90,
+    outroTime: 120,
+    scope: 'current'
+};
+let hasSkippedIntro = false;
+let hasSkippedOutro = false;
+let skipHintTimeout = null;
+
 // 改进返回功能
 function goBack(event) {
     // 防止默认链接行为
@@ -447,11 +458,36 @@ function initPlayer(videoUrl) {
         isLive: false,
         muted: false,
         autoplay: true,
-        pip: true,
+        pip: !(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)),
         autoSize: false,
         autoMini: true,
         screenshot: true,
         setting: true,
+        settings: [
+            {
+                html: '跳过片头片尾',
+                tooltip: '设置跳过时间',
+                icon: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>',
+                selector: [
+                    {
+                        html: '关闭',
+                        value: 'off'
+                    },
+                    {
+                        html: '片头90秒 + 片尾120秒',
+                        value: 'both'
+                    },
+                    {
+                        html: '自定义设置...',
+                        value: 'custom'
+                    }
+                ],
+                onSelect: function(item) {
+                    handleSkipSettingSelect(item.value);
+                    return item.html;
+                }
+            }
+        ],
         loop: false,
         flip: false,
         playbackRate: true,
@@ -637,6 +673,7 @@ function initPlayer(videoUrl) {
     // 播放器加载完成后初始隐藏工具栏
     art.on('ready', () => {
         hideControls();
+        addOrientationControl();
     });
 
     // 全屏 Web 模式处理
@@ -684,6 +721,9 @@ function initPlayer(videoUrl) {
         // 设置进度条点击监听
         setupProgressBarPreciseClicks();
 
+        // 初始化跳过片头片尾功能
+        initSkipFeature();
+
         // 视频加载成功后，在稍微延迟后将其添加到观看历史
         setTimeout(saveToHistory, 3000);
 
@@ -729,13 +769,17 @@ function initPlayer(videoUrl) {
         }
     });
 
-    // 添加双击全屏支持
+    // 添加双击支持：移动端双击暂停/播放，桌面端双击全屏
     art.on('video:playing', () => {
-        // 绑定双击事件到视频容器
         if (art.video) {
-            art.video.addEventListener('dblclick', () => {
-                art.fullscreen = !art.fullscreen;
-                art.play();
+            art.video.addEventListener('dblclick', (e) => {
+                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                if (isMobile) {
+                    art.toggle();
+                } else {
+                    art.fullscreen = !art.fullscreen;
+                    art.play();
+                }
             });
         }
     });
@@ -922,6 +966,9 @@ function playEpisode(index) {
     currentEpisodeIndex = index;
     currentVideoUrl = url;
     videoHasEnded = false; // 重置视频结束标志
+    
+    // 重置跳过片头片尾状态
+    resetSkipState();
 
     clearVideoProgress();
 
@@ -1546,14 +1593,12 @@ async function testVideoSourceSpeed(sourceKey, vodId) {
             const videoTestEnd = performance.now();
             const totalTime = videoTestEnd - startTime;
             
-            // 返回总响应时间（毫秒）
             return { 
                 speed: Math.round(totalTime),
                 episodes: data.episodes.length,
                 error: null 
             };
         } catch (videoError) {
-            // 如果视频链接测试失败，只返回API响应时间
             const apiTime = performance.now() - startTime;
             return { 
                 speed: Math.round(apiTime),
@@ -1568,6 +1613,321 @@ async function testVideoSourceSpeed(sourceKey, vodId) {
             speed: -1, 
             error: error.name === 'AbortError' ? '超时' : '测试失败' 
         };
+    }
+}
+
+// =================================
+// ======== 跳过片头片尾功能 ========
+// =================================
+
+// 加载跳过设置
+function loadSkipSettings() {
+    try {
+        const globalSettings = JSON.parse(localStorage.getItem('skipSettingsGlobal') || '{}');
+        const currentShowSettings = JSON.parse(localStorage.getItem(`skipSettings_${currentVideoTitle}`) || '{}');
+        
+        if (currentShowSettings && Object.keys(currentShowSettings).length > 0) {
+            skipSettings = { ...skipSettings, ...currentShowSettings };
+        } else if (globalSettings && Object.keys(globalSettings).length > 0) {
+            skipSettings = { ...skipSettings, ...globalSettings, scope: 'all' };
+        }
+    } catch (e) {
+        console.error('加载跳过设置失败:', e);
+    }
+}
+
+// 保存跳过设置
+function saveSkipSettings() {
+    if (skipSettings.scope === 'all') {
+        localStorage.setItem('skipSettingsGlobal', JSON.stringify(skipSettings));
+        localStorage.removeItem(`skipSettings_${currentVideoTitle}`);
+    } else {
+        localStorage.setItem(`skipSettings_${currentVideoTitle}`, JSON.stringify(skipSettings));
+    }
+}
+
+// 处理设置选择
+function handleSkipSettingSelect(value) {
+    switch (value) {
+        case 'off':
+            skipSettings.enabled = false;
+            skipSettings.introTime = 0;
+            skipSettings.outroTime = 0;
+            saveSkipSettings();
+            resetSkipState();
+            showToast('已关闭跳过功能', 'success');
+            break;
+        case 'both':
+            skipSettings.enabled = true;
+            skipSettings.introTime = 90;
+            skipSettings.outroTime = 120;
+            saveSkipSettings();
+            resetSkipState();
+            showToast('已启用：片头90秒 + 片尾120秒', 'success');
+            break;
+        case 'custom':
+            toggleSkipSettings();
+            break;
+    }
+}
+
+// 切换设置弹窗显示
+function toggleSkipSettings() {
+    const modal = document.getElementById('skipSettingsModal');
+    if (!modal) return;
+    
+    const isHidden = modal.classList.contains('hidden');
+    
+    if (isHidden) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        updateSkipSettingsUI();
+    } else {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+}
+
+// 更新设置UI
+function updateSkipSettingsUI() {
+    const enabledCheckbox = document.getElementById('skipEnabled');
+    const introInput = document.getElementById('skipIntroTime');
+    const outroInput = document.getElementById('skipOutroTime');
+    const scopeRadios = document.querySelectorAll('input[name="skipScope"]');
+    
+    if (enabledCheckbox) enabledCheckbox.checked = skipSettings.enabled;
+    if (introInput) introInput.value = skipSettings.introTime;
+    if (outroInput) outroInput.value = skipSettings.outroTime;
+    
+    scopeRadios.forEach(radio => {
+        radio.checked = radio.value === skipSettings.scope;
+    });
+    
+    updateTimeDisplay();
+}
+
+// 更新时间显示
+function updateTimeDisplay() {
+    const introDisplay = document.getElementById('introTimeDisplay');
+    const outroDisplay = document.getElementById('outroTimeDisplay');
+    
+    if (introDisplay) {
+        introDisplay.textContent = formatSkipTime(skipSettings.introTime);
+    }
+    if (outroDisplay) {
+        outroDisplay.textContent = formatSkipTime(skipSettings.outroTime);
+    }
+}
+
+// 格式化跳过时间显示
+function formatSkipTime(seconds) {
+    if (seconds < 60) {
+        return `${seconds}秒`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    if (remainingSeconds === 0) {
+        return `${minutes}分钟`;
+    }
+    return `${minutes}分${remainingSeconds}秒`;
+}
+
+// 从弹窗保存设置
+function saveSkipSettingsFromModal() {
+    const enabled = document.getElementById('skipEnabled').checked;
+    const introTime = parseInt(document.getElementById('skipIntroTime').value) || 0;
+    const outroTime = parseInt(document.getElementById('skipOutroTime').value) || 0;
+    const scope = document.querySelector('input[name="skipScope"]:checked')?.value || 'current';
+    
+    skipSettings = {
+        enabled: enabled,
+        introTime: Math.min(Math.max(introTime, 0), 600),
+        outroTime: Math.min(Math.max(outroTime, 0), 600),
+        scope: scope
+    };
+    
+    saveSkipSettings();
+    updateTimeDisplay();
+}
+
+// 重置设置
+function resetSkipSettings() {
+    skipSettings = {
+        enabled: false,
+        introTime: 90,
+        outroTime: 120,
+        scope: 'current'
+    };
+    
+    updateSkipSettingsUI();
+    saveSkipSettings();
+}
+
+// 显示跳过提示
+function showSkipHint(text) {
+    const hint = document.getElementById('skipHint');
+    const hintText = document.getElementById('skipHintText');
+    
+    if (!hint || !hintText) return;
+    
+    if (skipHintTimeout) {
+        clearTimeout(skipHintTimeout);
+    }
+    
+    hintText.textContent = text;
+    hint.classList.add('show');
+    
+    skipHintTimeout = setTimeout(() => {
+        hint.classList.remove('show');
+    }, 2000);
+}
+
+// 检查并执行跳过
+function checkAndSkip() {
+    if (!art || !art.video || !skipSettings.enabled) return;
+    
+    const currentTime = art.video.currentTime;
+    const duration = art.video.duration;
+    
+    if (!duration || duration <= 0) return;
+    
+    if (!hasSkippedIntro && skipSettings.introTime > 0) {
+        if (currentTime > 0 && currentTime < skipSettings.introTime) {
+            art.video.currentTime = skipSettings.introTime;
+            hasSkippedIntro = true;
+            showSkipHint('跳过片头');
+            return;
+        }
+    }
+    
+    if (!hasSkippedOutro && skipSettings.outroTime > 0) {
+        const outroStart = duration - skipSettings.outroTime;
+        if (currentTime >= outroStart && currentTime < duration - 1) {
+            if (autoplayEnabled && currentEpisodeIndex < currentEpisodes.length - 1) {
+                showSkipHint('跳过片尾，播放下一集');
+                setTimeout(() => {
+                    playNextEpisode();
+                }, 500);
+            } else {
+                art.video.currentTime = duration - 0.5;
+                showSkipHint('跳过片尾');
+            }
+            hasSkippedOutro = true;
+        }
+    }
+}
+
+// 重置跳过状态（切换视频时调用）
+function resetSkipState() {
+    hasSkippedIntro = false;
+    hasSkippedOutro = false;
+}
+
+// 初始化跳过功能
+function initSkipFeature() {
+    loadSkipSettings();
+    resetSkipState();
+    
+    if (art && art.video) {
+        art.video.addEventListener('timeupdate', checkAndSkip);
+        
+        art.video.addEventListener('seeked', function() {
+            if (art.video.currentTime > skipSettings.introTime) {
+                hasSkippedIntro = true;
+            }
+        });
+        
+        art.video.addEventListener('play', function() {
+            if (art.video.currentTime < 1) {
+                resetSkipState();
+            }
+        });
+    }
+}
+
+// =================================
+// ======== 横竖屏切换功能 ========
+// =================================
+
+let isLandscape = false;
+
+function addOrientationControl() {
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (!isMobile) return;
+    
+    try {
+        art.controls.add({
+            name: 'screen-orientation',
+            position: 'right',
+            html: `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="7" y="11" width="14" height="8" rx="1" fill="#000"/>
+                <rect x="3" y="5" width="8" height="14" rx="1" fill="#000"/>
+                <path d="M11 5c2 0 3 1 4 3"/>
+                <path d="M14 7l1-2 1 2"/>
+            </svg>`,
+            tooltip: '横竖屏切换',
+            click: function() {
+                toggleScreenOrientation();
+            }
+        });
+        console.log('横竖屏按钮已添加');
+    } catch (e) {
+        console.error('添加横竖屏按钮失败:', e);
+    }
+}
+
+function toggleScreenOrientation() {
+    if (!screen.orientation || !screen.orientation.lock) {
+        showToast('请在真机上使用此功能', 'error');
+        return;
+    }
+    
+    try {
+        if (isLandscape) {
+            screen.orientation.unlock();
+            isLandscape = false;
+            updateOrientationButton(false);
+            showToast('已解锁屏幕方向', 'success');
+        } else {
+            screen.orientation.lock('landscape').then(() => {
+                isLandscape = true;
+                updateOrientationButton(true);
+                showToast('已锁定横屏', 'success');
+            }).catch((e) => {
+                console.error('锁定屏幕方向失败:', e);
+                showToast('请在真机上使用此功能', 'error');
+            });
+        }
+    } catch (e) {
+        console.error('屏幕方向切换失败:', e);
+        showToast('请在真机上使用此功能', 'error');
+    }
+}
+
+function updateOrientationButton(isLocked) {
+    const btn = document.querySelector('.art-control-screen-orientation');
+    if (!btn) return;
+    
+    const icon = btn.querySelector('svg');
+    if (!icon) return;
+    
+    if (isLocked) {
+        icon.innerHTML = `
+            <rect x="7" y="11" width="14" height="8" rx="1" fill="#000"/>
+            <rect x="3" y="5" width="8" height="14" rx="1" fill="#000"/>
+            <path d="M11 5c2 0 3 1 4 3"/>
+            <path d="M14 7l1-2 1 2"/>
+        `;
+        btn.style.color = '#00ccff';
+    } else {
+        icon.innerHTML = `
+            <rect x="7" y="11" width="14" height="8" rx="1" fill="#000"/>
+            <rect x="3" y="5" width="8" height="14" rx="1" fill="#000"/>
+            <path d="M11 5c2 0 3 1 4 3"/>
+            <path d="M14 7l1-2 1 2"/>
+        `;
+        btn.style.color = '';
     }
 }
 

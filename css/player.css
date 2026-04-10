@@ -393,3 +393,52 @@ input:checked + .slider:before {
 #username {
     display: none !important;
 }
+
+/* 跳过片头片尾设置弹窗样式 */
+#skipSettingsModal {
+    backdrop-filter: blur(4px);
+}
+
+#skipSettingsModal input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+#skipSettingsModal input[type="number"]::-webkit-outer-spin-button,
+#skipSettingsModal input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+#skipSettingsModal input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #00ccff;
+}
+
+/* 跳过提示样式 */
+.skip-hint {
+    position: fixed;
+    top: 50%;
+    right: 20px;
+    transform: translateY(-50%) translateX(100%);
+    background: linear-gradient(135deg, #00ccff 0%, #0099cc 100%);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    z-index: 10003;
+    opacity: 0;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 204, 255, 0.4);
+}
+
+.skip-hint.show {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+}
+
+.skip-hint-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+}
