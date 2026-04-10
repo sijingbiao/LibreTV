@@ -1,6 +1,9 @@
 const selectedAPIs = JSON.parse(localStorage.getItem('selectedAPIs') || '[]');
 const customAPIs = JSON.parse(localStorage.getItem('customAPIs') || '[]'); // 存储自定义API列表
 
+// 横竖屏切换相关变量
+let isLandscape = false;
+
 // 跳过片头片尾相关变量
 let skipSettings = {
     enabled: false,
@@ -657,15 +660,14 @@ function initPlayer(videoUrl) {
             document.removeEventListener('mouseout', handleMouseOut);
             // 退出全屏时清理计时器
             clearTimeout(hideTimer);
-        }
-
-        if (!isWeb) {
-            if (window.screen.orientation && window.screen.orientation.lock) {
-                window.screen.orientation.lock('landscape')
-                    .then(() => {
-                    })
-                    .catch((error) => {
-                    });
+            // 退出全屏时解锁屏幕方向
+            if (screen.orientation && screen.orientation.unlock) {
+                try {
+                    screen.orientation.unlock();
+                    isLandscape = false;
+                } catch (e) {
+                    // 忽略错误
+                }
             }
         }
     }
@@ -1849,8 +1851,6 @@ function initSkipFeature() {
 // ======== 横竖屏切换功能 ========
 // =================================
 
-let isLandscape = false;
-
 function addOrientationControl() {
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
@@ -1871,6 +1871,15 @@ function addOrientationControl() {
                 toggleScreenOrientation();
             }
         });
+        
+        if (screen.orientation) {
+            screen.orientation.addEventListener('change', () => {
+                const type = screen.orientation.type;
+                isLandscape = type.startsWith('landscape');
+                updateOrientationButton(isLandscape);
+            });
+        }
+        
         console.log('横竖屏按钮已添加');
     } catch (e) {
         console.error('添加横竖屏按钮失败:', e);
@@ -1878,31 +1887,72 @@ function addOrientationControl() {
 }
 
 function toggleScreenOrientation() {
+    console.log('=== 横竖屏切换开始 ===');
+    console.log('screen.orientation:', screen.orientation);
+    console.log('screen.orientation.lock:', screen.orientation ? screen.orientation.lock : 'undefined');
+    
     if (!screen.orientation || !screen.orientation.lock) {
-        showToast('请在真机上使用此功能', 'error');
+        console.error('浏览器不支持 screen.orientation.lock API');
+        showToast('您的浏览器不支持屏幕方向切换', 'error');
         return;
     }
     
+    console.log('当前 isLandscape 状态:', isLandscape);
+    console.log('当前屏幕方向:', screen.orientation.type);
+    
     try {
         if (isLandscape) {
+            console.log('执行解锁屏幕方向...');
             screen.orientation.unlock();
             isLandscape = false;
             updateOrientationButton(false);
             showToast('已解锁屏幕方向', 'success');
+            console.log('解锁成功');
         } else {
-            screen.orientation.lock('landscape').then(() => {
-                isLandscape = true;
-                updateOrientationButton(true);
-                showToast('已锁定横屏', 'success');
-            }).catch((e) => {
-                console.error('锁定屏幕方向失败:', e);
-                showToast('请在真机上使用此功能', 'error');
-            });
+            const lockOrientation = function() {
+                console.log('尝试锁定横屏...');
+                console.log('当前全屏状态:');
+                console.log('  - document.fullscreenElement:', document.fullscreenElement);
+                console.log('  - document.webkitFullscreenElement:', document.webkitFullscreenElement);
+                console.log('  - art.fullscreen:', art.fullscreen);
+                console.log('  - art.fullscreenWeb:', art.fullscreenWeb);
+                
+                screen.orientation.lock('landscape').then(function() {
+                    console.log('锁定横屏成功！');
+                    isLandscape = true;
+                    updateOrientationButton(true);
+                    showToast('已锁定横屏', 'success');
+                }).catch(function(e) {
+                    console.error('锁定屏幕方向失败:', e);
+                    console.error('错误名称:', e.name);
+                    console.error('错误信息:', e.message);
+                    console.error('错误堆栈:', e.stack);
+                    if (e.name === 'NotSupportedError' || (e.message && e.message.includes('fullscreen'))) {
+                        showToast('请先进入全屏模式', 'error');
+                    } else {
+                        showToast('无法锁定屏幕方向: ' + e.message, 'error');
+                    }
+                });
+            };
+            
+            var isFullscreen = document.fullscreenElement || document.webkitFullscreenElement || art.fullscreen || art.fullscreenWeb;
+            console.log('计算后的 isFullscreen:', isFullscreen);
+            
+            if (!isFullscreen) {
+                console.log('未在全屏模式，先进入全屏...');
+                art.fullscreen = true;
+                setTimeout(lockOrientation, 200);
+            } else {
+                console.log('已在全屏模式，直接锁定...');
+                lockOrientation();
+            }
         }
     } catch (e) {
-        console.error('屏幕方向切换失败:', e);
-        showToast('请在真机上使用此功能', 'error');
+        console.error('屏幕方向切换异常:', e);
+        console.error('异常堆栈:', e.stack);
+        showToast('屏幕方向切换失败', 'error');
     }
+    console.log('=== 横竖屏切换结束 ===');
 }
 
 function updateOrientationButton(isLocked) {

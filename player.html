@@ -366,5 +366,39 @@
             });
         });
     </script>
+    
+    <!-- vConsole 调试工具 -->
+    <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+    <script>
+        let vConsoleInstance = null;
+        let clickCount = 0;
+        let clickTimer = null;
+        
+        document.body.addEventListener('click', function(e) {
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.tagName === 'INPUT' || e.target.closest('button') || e.target.closest('a') || e.target.closest('input')) {
+                return;
+            }
+            
+            clickCount++;
+            
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+            }
+            
+            clickTimer = setTimeout(function() {
+                clickCount = 0;
+            }, 500);
+            
+            if (clickCount >= 5) {
+                clickCount = 0;
+                if (vConsoleInstance) {
+                    vConsoleInstance.destroy();
+                    vConsoleInstance = null;
+                } else {
+                    vConsoleInstance = new VConsole();
+                }
+            }
+        });
+    </script>
 </body>
 </html>
