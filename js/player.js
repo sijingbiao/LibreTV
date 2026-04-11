@@ -784,8 +784,10 @@ function initPlayer(videoUrl) {
     });
 
     // 添加双击支持：移动端双击暂停/播放，桌面端双击全屏
+    let doubleTapInitialized = false;
     art.on('video:playing', () => {
-        if (art.video) {
+        if (art.video && !doubleTapInitialized) {
+            doubleTapInitialized = true;
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             
             if (isMobile) {
