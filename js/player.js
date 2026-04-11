@@ -3,6 +3,18 @@ const customAPIs = JSON.parse(localStorage.getItem('customAPIs') || '[]'); // �
 
 // 横竖屏切换相关变量
 let isLandscape = false;
+let plusReady = false;
+
+// HBuilder X HTML5+ API 初始化
+document.addEventListener('plusready', function() {
+    plusReady = true;
+    console.log('HTML5+ API 已就绪');
+}, false);
+
+// 兼容性处理：如果 plus 已经存在
+if (window.plus) {
+    plusReady = true;
+}
 
 // 跳过片头片尾相关变量
 let skipSettings = {
@@ -774,15 +786,37 @@ function initPlayer(videoUrl) {
     // 添加双击支持：移动端双击暂停/播放，桌面端双击全屏
     art.on('video:playing', () => {
         if (art.video) {
-            art.video.addEventListener('dblclick', (e) => {
-                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                if (isMobile) {
-                    art.toggle();
-                } else {
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            
+            if (isMobile) {
+                let lastTapTime = 0;
+                let tapTimeout = null;
+                
+                art.video.addEventListener('touchend', (e) => {
+                    const currentTime = Date.now();
+                    const tapLength = currentTime - lastTapTime;
+                    
+                    if (tapTimeout) {
+                        clearTimeout(tapTimeout);
+                    }
+                    
+                    if (tapLength < 300 && tapLength > 0) {
+                        lastTapTime = 0;
+                        art.toggle();
+                        e.preventDefault();
+                    } else {
+                        lastTapTime = currentTime;
+                        tapTimeout = setTimeout(() => {
+                            lastTapTime = 0;
+                        }, 300);
+                    }
+                });
+            } else {
+                art.video.addEventListener('dblclick', (e) => {
                     art.fullscreen = !art.fullscreen;
                     art.play();
-                }
-            });
+                });
+            }
         }
     });
 
@@ -1851,6 +1885,19 @@ function initSkipFeature() {
 // ======== 横竖屏切换功能 ========
 // =================================
 
+function isAppWebView() {
+    const ua = navigator.userAgent.toLowerCase();
+    return ua.includes('wv') || 
+           ua.includes('webview') || 
+           ua.includes('uni-app') ||
+           ua.includes('html5plus') ||
+           window.plus ||
+           window.webkit || 
+           window.androidInterface ||
+           window.JSBridge ||
+           window.AppInterface;
+}
+
 function addOrientationControl() {
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
@@ -1886,10 +1933,93 @@ function addOrientationControl() {
     }
 }
 
+function callAppOrientation(landscape) {
+    console.log('尝试调用 App 原生方法切换屏幕方向:', landscape ? '横屏' : '竖屏');
+    
+    // HBuilder X / uni-app HTML5+ API
+    if (window.plus && window.plus.screen) {
+        console.log('使用 HTML5+ API 切换屏幕方向');
+        try {
+            if (landscape) {
+                plus.screen.lockOrientation('landscape');
+            } else {
+                plus.screen.lockOrientation('portrait');
+            }
+            console.log('HTML5+ API 调用成功');
+            return true;
+        } catch (e) {
+            console.error('HTML5+ API 调用失败:', e);
+        }
+    }
+    
+    // uni-app API
+    if (window.uni && window.uni.setDeviceOrientation) {
+        console.log('使用 uni API 切换屏幕方向');
+        try {
+            uni.setDeviceOrientation({
+                value: landscape ? 'landscape' : 'portrait'
+            });
+            return true;
+        } catch (e) {
+            console.error('uni API 调用失败:', e);
+        }
+    }
+    
+    if (window.androidInterface && window.androidInterface.setOrientation) {
+        window.androidInterface.setOrientation(landscape ? 0 : 1);
+        return true;
+    }
+    
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.setOrientation) {
+        window.webkit.messageHandlers.setOrientation.postMessage(landscape ? 'landscape' : 'portrait');
+        return true;
+    }
+    
+    if (window.JSBridge && window.JSBridge.setOrientation) {
+        window.JSBridge.setOrientation(landscape);
+        return true;
+    }
+    
+    if (window.AppInterface && window.AppInterface.setOrientation) {
+        window.AppInterface.setOrientation(landscape);
+        return true;
+    }
+    
+    return false;
+}
+
 function toggleScreenOrientation() {
     console.log('=== 横竖屏切换开始 ===');
+    console.log('isAppWebView:', isAppWebView());
     console.log('screen.orientation:', screen.orientation);
     console.log('screen.orientation.lock:', screen.orientation ? screen.orientation.lock : 'undefined');
+    
+    const inApp = isAppWebView();
+    
+    if (inApp) {
+        console.log('检测到 App 环境，尝试调用原生方法...');
+        
+        if (isLandscape) {
+            const called = callAppOrientation(false);
+            if (called) {
+                isLandscape = false;
+                updateOrientationButton(false);
+                showToast('已切换为竖屏', 'success');
+            } else {
+                showToast('App 不支持屏幕方向切换', 'error');
+            }
+        } else {
+            const called = callAppOrientation(true);
+            if (called) {
+                isLandscape = true;
+                updateOrientationButton(true);
+                showToast('已切换为横屏', 'success');
+            } else {
+                showToast('App 不支持屏幕方向切换', 'error');
+            }
+        }
+        return;
+    }
     
     if (!screen.orientation || !screen.orientation.lock) {
         console.error('浏览器不支持 screen.orientation.lock API');
